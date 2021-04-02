@@ -5,6 +5,7 @@ import time
 sys.path.append(os.getcwd()+'/CPDP')
 sys.path.append(os.getcwd()+'/JinEnv')
 sys.path.append(os.getcwd()+'/lib')
+import random
 import time
 import json
 import numpy as np
@@ -20,6 +21,7 @@ from generate_random_obs import generate_random_obs
 
 
 if __name__ == "__main__":
+    random.seed(30)
     # a json configuration file
     config_file_name = "config.json"
     # Read the configuration from the json file
@@ -27,8 +29,8 @@ if __name__ == "__main__":
     config_data = json.load(json_file)
 
     # generate random obstacles
-    num_obs = 25 # number of obstacles
-    size_list=[0.2, 0.3, 0.4] # size lenth, width, height in x,y,z axis
+    num_obs = 15  # number of obstacles
+    size_list=[0.2, 0.3, 0.4]  # size lenth, width, height in x,y,z axis
     ObsList = generate_random_obs(num_obs, size_list, config_data)
 
     # define the quadrotor dynamics parameters
@@ -63,7 +65,7 @@ if __name__ == "__main__":
 
     # load the optimization method for learning iteration
     # para_dict = {"learning_rate": 0.01, "iter_num": 30, "method": "Vanilla"} # This is for Vanilla gradient descent
-    para_dict = {"learning_rate": 0.01, "iter_num": 100, "method": "Nesterov", "mu": 0.9, "true_loss_print_flag": False} # This is for Nesterov Momentum
+    para_dict = {"learning_rate": 0.01, "iter_num": 70, "method": "Nesterov", "mu": 0.9, "true_loss_print_flag": False} # This is for Nesterov Momentum
     # para_dict = {"learning_rate": 0.01, "iter_num": 50, "method": "Adam", "beta_1": 0.9, "beta_2": 0.999, "epsilon": 1e-8} # This is for Adam
     # para_dict = {"learning_rate": 0.01, "iter_num": 50, "method": "Nadam", "beta_1": 0.9, "beta_2": 0.999, "epsilon": 1e-8} # This is for Nadam
     # para_dict = {"learning_rate": 0.01, "iter_num": 100, "method": "AMSGrad", "beta_1": 0.9, "beta_2": 0.999, "epsilon": 1e-8} # This is for AMSGrad

@@ -235,7 +235,7 @@ class InputWaypoints(object):
 
         # plot obstacles
         num_obs = len(ObsList)
-        if num_obs > 0.5:
+        if num_obs > 0:
             for i in range(0, num_obs):
                 x = ObsList[i].center[0] - 0.5 * ObsList[i].length
                 y = ObsList[i].center[1] - 0.5 * ObsList[i].width

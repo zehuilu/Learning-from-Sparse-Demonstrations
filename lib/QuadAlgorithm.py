@@ -32,7 +32,6 @@ class QuadAlgorithm(object):
     time_horizon: float # total time [sec] for sparse demonstration (waypoints)
     loss_trace: list # 1D list for loss trajectory during the iteration
     parameter_trace: list # 2D list for parameter trajectory during the iteration, each sub-list is a parameter
-
     learning_rate: float # the learning rate
     optimization_method_str: str # a string of optimization method for learning process
     mu_momentum: float # momentum parameter, usually around 0.9, 0 < mu_momentum < 1
@@ -46,7 +45,6 @@ class QuadAlgorithm(object):
     beta_1_amsgrad: float # parameter beta_1 for AMSGrad, typically 0.9
     beta_2_amsgrad: float # parameter beta_2 for AMSGrad, typically 0.999
     epsilon_amsgrad: float # parameter epsilon for AMSGrad, typically 1e-8
-
 
     def __init__(self, config_data, QuadParaInput: QuadPara, n_grid: int):
         """
@@ -69,7 +67,6 @@ class QuadAlgorithm(object):
         self.space_limit_z = config_data["LAB_SPACE_LIMIT"]["LIMIT_Z"]
         # the average speed for the quadrotor [m/s]
         self.quad_average_speed = float(config_data["QUAD_AVERAGE_SPEED"])
-
 
     def settings(self, QuadDesiredStates: QuadStates):
         """
@@ -128,7 +125,6 @@ class QuadAlgorithm(object):
             self.velocity_vector_hat_amsgrad = np.array([0] * self.oc.n_auxvar)
         else:
             raise Exception("Wrong optimization method type!")
-
 
     def load_optimization_function(self, para_input: dict):
         """
@@ -190,7 +186,6 @@ class QuadAlgorithm(object):
         else:
             raise Exception("Wrong optimization method type!")
 
-
     def run(self, QuadInitialCondition: QuadStates, QuadDesiredStates: QuadStates, SparseInput: DemoSparse, ObsList: list, print_flag: bool, save_flag: bool):
         """
         Run the algorithm.
@@ -213,6 +208,7 @@ class QuadAlgorithm(object):
         # waypoints is a numpy 2D array, each row is a waypoint in R^3, i.e. [px, py, pz]
         self.waypoints = np.array(SparseInput.waypoints)
 
+
         # test why trajectory doesn't go to the goal, maybe waypoints and time_list should include goal
         #############################################
         # self.waypoints = np.array(SparseInput.waypoints+[QuadDesiredStates.position])
@@ -232,8 +228,8 @@ class QuadAlgorithm(object):
         # initialize parameter vector and momentum velocity vector
         self.loss_trace = []
         self.parameter_trace = []
-        current_parameter = np.array([1, 0.1, 0.1, 0.1, 0.1, 0.1, -1])
-        # current_parameter = np.array([1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        # current_parameter = np.array([1, 0.1, 0.1, 0.1, 0.1, 0.1, -1])
+        current_parameter = np.array([1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
         self.parameter_trace.append(current_parameter.tolist())
 
         loss = 100
@@ -358,8 +354,9 @@ class QuadAlgorithm(object):
             print("Playing animation")
             name_prefix_animation = os.getcwd() + '/trajectories/animation_' + time_prefix
             space_limits = [self.space_limit_x, self.space_limit_y, self.space_limit_z]
-            self.env.play_animation(self.QuadPara.l, opt_state_traj_numpy, name_prefix_animation, space_limits, save_option=True)
-
+            # waypoints from start to goal, for animation only
+            waypoints_animation = [QuadInitialCondition.position] + SparseInput.waypoints + [QuadDesiredStates.position]
+            self.env.play_animation(self.QuadPara.l, opt_state_traj_numpy, waypoints_animation, ObsList, space_limits, name_prefix_animation, save_option=True)
 
     def plot_opt_trajectory(self, posi_velo_traj_numpy, QuadInitialCondition: QuadStates, QuadDesiredStates: QuadStates, SparseInput: DemoSparse):
         """
@@ -394,7 +391,6 @@ class QuadAlgorithm(object):
         plt.title('Trajectory in 3D space.', fontweight ='bold')
         plt.show()
 
-    
     def plot_linear_cube(self, color='red'):
         """
         Plot obstacles in 3D space.
@@ -422,7 +418,6 @@ class QuadAlgorithm(object):
                 self.ax_3d.plot3D([x+dx, x+dx], [y+dy, y+dy], [z, z+dz], **kwargs)
                 self.ax_3d.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
 
-    
     def set_axes_equal_all(self):
         '''
         Make axes of 3D plot have equal scale so that spheres appear as spheres,
@@ -450,7 +445,6 @@ class QuadAlgorithm(object):
         self.ax_3d.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
         self.ax_3d.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
 
-
     def Vanilla_gradient_descent(self, current_parameter):
         """
         Vanilla gradient descent method.
@@ -464,7 +458,6 @@ class QuadAlgorithm(object):
         loss, diff_loss = self.getloss_pos_corrections(self.time_list_sparse, self.waypoints, opt_sol, auxsys_sol)
         current_parameter = current_parameter - self.learning_rate * np.array(diff_loss)
         return loss, diff_loss, current_parameter
-
 
     def Nesterov(self, current_parameter):
         """
@@ -494,7 +487,6 @@ class QuadAlgorithm(object):
             # print("Check time [sec]: ", t1-t0)
         return loss, diff_loss, current_parameter
 
-
     def Adam(self, current_parameter, iter_idx_now: int):
         """
         Adaptive Moment Estimation method (Adam).
@@ -518,7 +510,6 @@ class QuadAlgorithm(object):
         # update the parameter
         current_parameter = current_parameter - self.learning_rate * self.momentum_vector_hat_adam / (np.sqrt(self.velocity_vector_hat_adam) + self.epsilon_adam)
         return loss, diff_loss, current_parameter
-
 
     def Nadam(self, current_parameter, iter_idx_now: int):
         """
@@ -545,7 +536,6 @@ class QuadAlgorithm(object):
             ( self.beta_1_nadam*self.momentum_vector_hat_nadam + ((1-self.beta_1_nadam)/(1-np.power(self.beta_1_nadam, idx))) * np.array(diff_loss) ) \
             / (np.sqrt(self.velocity_vector_hat_nadam) + self.epsilon_nadam)
         return loss, diff_loss, current_parameter
-
 
     def AMSGrad(self, current_parameter, iter_idx_now: int):
         """
@@ -576,7 +566,6 @@ class QuadAlgorithm(object):
         current_parameter = current_parameter - self.learning_rate * self.momentum_vector_amsgrad \
             / (np.sqrt(self.velocity_vector_hat_amsgrad) + self.epsilon_amsgrad)
         return loss, diff_loss, current_parameter
-
 
     def plot_opt_method_comparison(self, loss_trace_comparison, label_list):
         """
@@ -612,7 +601,6 @@ class QuadAlgorithm(object):
         ax_comp_2.set_title('Log(Loss) Plot', fontweight ='bold')
         plt.show()
 
-
     def getloss_pos_corrections(self, time_grid, target_waypoints, opt_sol, auxsys_sol):
         """
         Compute the loss and loss gradient based on the positions of waypoints.
@@ -638,7 +626,6 @@ class QuadAlgorithm(object):
 
         return loss, diff_loss
 
-    
     def getloss_corrections(self, time_grid, target_waypoints, opt_sol, auxsys_sol):
         """
         Compute the loss and loss gradient based on the positions and orientations of waypoints.

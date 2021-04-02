@@ -991,8 +991,8 @@ class Quadrotor:
 
         return position
 
-    def play_animation(self, wing_len, state_traj, file_name_prefix: str, space_limits: list, save_option: bool, state_traj_ref=None, dt=0.1, title='UAV Maneuvering',
-                       horizon=1, waypoints=None):
+    def play_animation(self, wing_len, state_traj, waypoints_animation: list, ObsList: list, space_limits: list,
+                       file_name_prefix: str, save_option: bool, state_traj_ref=None, dt=0.1, title='UAV Maneuvering', horizon=1):
 
         # plot
         # params = {'axes.labelsize': 25,
@@ -1007,13 +1007,32 @@ class Quadrotor:
         ax.set_xlabel('X (m)', fontsize=15, labelpad=15)
         ax.set_ylabel('Y (m)', fontsize=15, labelpad=15)
         ax.set_zlabel('Z (m)', fontsize=15, labelpad=15)
-        #ax.set_zlim(0, 12)
-        #ax.set_ylim(-9, 9)
-        #ax.set_xlim(-9, 9)
         self.set_axes_equal_all(ax, space_limits)
         ax.set_title('UAV manuvering', pad=15, fontsize=20)
-        time_template = 'time = %.1fs'
-        time_text = ax.text2D(0.55, 0.50, "time", transform=ax.transAxes, fontsize=15)
+        time_template = 'wrapped time = %.1fs'
+        time_text = ax.text2D(0.20, 0.80, "time", transform=ax.transAxes, fontsize=15)
+
+        # plot obstacles
+        plot_linear_cube(ax, ObsList)
+
+        # set legends
+        colors = ["green", "violet", "blue"]
+        marker_list = ["o", "o", "o"]
+        labels = ["start", "goal", "waypoints"]
+        def f(marker_type, color_type): return plt.plot([], [], marker=marker_type, color=color_type, ls="none")[0]
+        handles = [f(marker_list[i], colors[i]) for i in range(len(labels))]
+
+        # add legend about path
+        handles.append(plt.plot([], [], c="C0", linewidth=2)[0])
+        handles.append(patches.Patch(color="red", alpha=0.75))
+        labels.extend(["Trajectory", "Obstacles"])
+        plt.legend(handles, labels, bbox_to_anchor=(1, 1), loc='upper left', framealpha=1)
+
+        # parse waypoints to plot, from start to goal
+        ax.scatter(waypoints_animation[0][0], waypoints_animation[0][1], waypoints_animation[0][2], color="green")
+        for i in range(1, len(waypoints_animation) - 1):
+            ax.scatter(waypoints_animation[i][0], waypoints_animation[i][1], waypoints_animation[i][2], c="C0")
+        ax.scatter(waypoints_animation[-1][0], waypoints_animation[-1][1], waypoints_animation[-1][2], color="violet")
 
         # fig = plt.figure(figsize=(7,6))
         # ax = fig.add_subplot(1, 1, 1, projection='3d', )
@@ -1032,7 +1051,6 @@ class Quadrotor:
         # ax.set_position([-0.17, -0.12, 1.30, 1.15])
         # time_template = 'time = %.1fs'
         # time_text = ax.text2D(0.55, 0.20, "time", transform=ax.transAxes, fontsize=0)
-
 
         # fig = plt.figure(figsize=(7,6))
         # ax = fig.add_subplot(1, 1, 1, projection='3d', )
@@ -1063,10 +1081,6 @@ class Quadrotor:
         # bar1_bottom = ax.bar3d([2.5], [2], [1.5], dx=[0.5], dy=[4.5], dz=[0.5], color='#D95319')
         # bar1_top = ax.bar3d([2.5], [2.5], [5.5], dx=[0.5], dy=[4.5], dz=[0.5], color='#D95319')
         # bar1_back = ax.bar3d([2.5], [6.5], [6.0], dx=[0.5], dy=[0.5], dz=[-4.5], color='#D95319')
-
-        if waypoints is not None:
-            ax.scatter(waypoints[:, 0], waypoints[:, 1], waypoints[:, 2], s=80, zorder=10000, color='red', alpha=1,
-                       marker='^')
 
         # data
         position = self.get_quadrotor_position(wing_len, state_traj)
@@ -1175,8 +1189,6 @@ class Quadrotor:
             Writer = animation.writers['ffmpeg']
             writer = Writer(fps=10, metadata=dict(artist='Me'), bitrate=-1)
             ani.save(file_name_prefix + '.gif', writer=writer, dpi=300)
-            print('save_success')
-
         plt.show()
 
     def dir_cosine(self, q):
@@ -1751,3 +1763,30 @@ def quaternion_conj(q):
     conj_q[2] = -q[2]
     conj_q[3] = -q[3]
     return conj_q
+
+def plot_linear_cube(ax_3d, ObsList: list, color='red', alpha=0.75):
+    """
+    Plot obstacles in 3D space.
+    """
+
+    # plot obstacles
+    num_obs = len(ObsList)
+    if num_obs > 0:
+        for i in range(0, num_obs):
+            x = ObsList[i].center[0] - 0.5 * ObsList[i].length
+            y = ObsList[i].center[1] - 0.5 * ObsList[i].width
+            z = ObsList[i].center[2] - 0.5 * ObsList[i].height
+
+            dx = ObsList[i].length
+            dy = ObsList[i].width
+            dz = ObsList[i].height
+
+            xx = [x, x, x+dx, x+dx, x]
+            yy = [y, y+dy, y+dy, y, y]
+            kwargs = {'alpha': alpha, 'color': color}
+            ax_3d.plot3D(xx, yy, [z]*5, **kwargs)
+            ax_3d.plot3D(xx, yy, [z+dz]*5, **kwargs)
+            ax_3d.plot3D([x, x], [y, y], [z, z+dz], **kwargs)
+            ax_3d.plot3D([x, x], [y+dy, y+dy], [z, z+dz], **kwargs)
+            ax_3d.plot3D([x+dx, x+dx], [y+dy, y+dy], [z, z+dz], **kwargs)
+            ax_3d.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
