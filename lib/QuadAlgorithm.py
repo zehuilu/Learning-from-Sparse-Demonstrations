@@ -79,7 +79,7 @@ class QuadAlgorithm(object):
         self.env.initDyn(Jx=self.QuadPara.inertial_x, Jy=self.QuadPara.inertial_y, Jz=self.QuadPara.inertial_z, \
             mass=self.QuadPara.mass, l=self.QuadPara.l, c=self.QuadPara.c)
         # set the desired goal states
-        self.env.initCost_Polynomial(QuadDesiredStates, w_thrust=0.1)
+        self.env.initCost_Polynomial(QuadDesiredStates, w_thrust=0.05)
 
         # create UAV optimal control object with time-warping function
         self.oc = CPDP.COCSys()
@@ -203,23 +203,18 @@ class QuadAlgorithm(object):
 
         # create sparse waypionts and time horizon
         self.time_horizon = SparseInput.time_horizon
-        # time_list_sparse is a numpy 1D array, timestamps [sec] for sparse demonstration (waypoints), not including the start and goal
-        self.time_list_sparse = np.array(SparseInput.time_list)
-        # waypoints is a numpy 2D array, each row is a waypoint in R^3, i.e. [px, py, pz]
-        self.waypoints = np.array(SparseInput.waypoints)
 
+        # time_list_sparse is a numpy 1D array, timestamps [sec] for sparse demonstration (waypoints), including the goal, but not the start
+        self.time_list_sparse = np.array(SparseInput.time_list + [SparseInput.time_horizon])
+        # waypoints is a numpy 2D array, each row is a waypoint in R^3, i.e. [px, py, pz], including the goal, but not the start
+        self.waypoints = np.array(SparseInput.waypoints + [QuadDesiredStates.position])
 
-        # test why trajectory doesn't go to the goal, maybe waypoints and time_list should include goal
-        #############################################
-        # self.waypoints = np.array(SparseInput.waypoints+[QuadDesiredStates.position])
-
-
-        # for debugging
+        # for debugging ####################
         self.time_horizon = 1.0
-        self.time_list_sparse = np.array(SparseInput.time_list) / SparseInput.time_horizon
+        self.time_list_sparse = self.time_list_sparse / SparseInput.time_horizon
         print("T")
         print(self.time_horizon)
-        print("taus")
+        print("taus, self.time_list_sparse")
         print(self.time_list_sparse)
         print("waypoints")
         print(self.waypoints)
@@ -228,15 +223,16 @@ class QuadAlgorithm(object):
         # initialize parameter vector and momentum velocity vector
         self.loss_trace = []
         self.parameter_trace = []
-        # current_parameter = np.array([1, 0.1, 0.1, 0.1, 0.1, 0.1, -1])
-        current_parameter = np.array([1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+
+        # initialization for parameter
+        # current_parameter = np.array([1, 1, 1, 1, 1, 1, 1])
+        current_parameter = np.array([4.120578683957645, 0.9228021159886032, -1.4862095856580815, 0.8601022150274684, 1.1816847055467004, 0.2352185698974606, -0.25515387192158057])
         self.parameter_trace.append(current_parameter.tolist())
 
         loss = 100
         diff_loss_norm = 100
         for j in range(self.iter_num):
-            if (loss > 0.9) and (diff_loss_norm > 0.05):
-
+            if (loss > 0.55) and (diff_loss_norm > 0.03):
                 # update parameter and compute loss by a pre-defined optimization method
                 loss, diff_loss, current_parameter = self.optimization_function(self, current_parameter, j)
                 self.loss_trace.append(loss)
@@ -244,18 +240,21 @@ class QuadAlgorithm(object):
 
                 # do the projection step
                 current_parameter[0] = fmax(current_parameter[0], 1e-8)
+                current_parameter[1] = fmax(current_parameter[1], 1e-8)
+                current_parameter[3] = fmax(current_parameter[3], 1e-8)
+                current_parameter[5] = fmax(current_parameter[5], 1e-8)
                 self.parameter_trace.append(current_parameter.tolist())
                 if print_flag:
                     print('iter:', j, ', loss:', self.loss_trace[-1], ', loss gradient norm:', diff_loss_norm)
-
             else:
                 print("The loss is less than threshold, stop the iteration.")
                 break
 
-
         # visualization of loss/log(loss) vs iterations
         fig_loss = plt.figure()
         print(self.optimization_method_str + " loss [max, min]: ", [self.loss_trace[0], self.loss_trace[-1]])
+        print("parameter")
+        print(self.parameter_trace[-1])
 
         # plot loss
         ax_loss_1 = fig_loss.add_subplot(121)
@@ -348,7 +347,9 @@ class QuadAlgorithm(object):
             print(np.array([time_steps]))
 
             # plot trajectory in 3D space
-            self.plot_opt_trajectory(posi_velo_traj_numpy, QuadInitialCondition, QuadDesiredStates, SparseInput)
+            self.plot_opt_trajectory_3d(posi_velo_traj_numpy, QuadInitialCondition, QuadDesiredStates, SparseInput)
+            # plot trajectory in 3D space (XOY Plane)
+            self.plot_opt_trajectory_2d(posi_velo_traj_numpy, QuadInitialCondition, QuadDesiredStates, SparseInput)
 
             # play animation
             print("Playing animation")
@@ -357,8 +358,9 @@ class QuadAlgorithm(object):
             # waypoints from start to goal, for animation only
             waypoints_animation = [QuadInitialCondition.position] + SparseInput.waypoints + [QuadDesiredStates.position]
             self.env.play_animation(self.QuadPara.l, opt_state_traj_numpy, waypoints_animation, ObsList, space_limits, name_prefix_animation, save_option=True)
+            self.env.play_animation_2d(self.QuadPara.l, opt_state_traj_numpy, waypoints_animation, ObsList, space_limits, name_prefix_animation, save_option=True)
 
-    def plot_opt_trajectory(self, posi_velo_traj_numpy, QuadInitialCondition: QuadStates, QuadDesiredStates: QuadStates, SparseInput: DemoSparse):
+    def plot_opt_trajectory_3d(self, posi_velo_traj_numpy, QuadInitialCondition: QuadStates, QuadDesiredStates: QuadStates, SparseInput: DemoSparse):
         """
         Plot trajectory and waypoints in 3D space with obstacles.
 
@@ -369,36 +371,85 @@ class QuadAlgorithm(object):
         self.ax_3d = self.fig_3d.add_subplot(111, projection='3d')
 
         # plot waypoints
-        self.ax_3d.plot3D(posi_velo_traj_numpy[0,:].tolist(), posi_velo_traj_numpy[1,:].tolist(), posi_velo_traj_numpy[2,:].tolist(), 'blue', label='optimal trajectory')
+        self.ax_3d.plot3D(posi_velo_traj_numpy[0,:].tolist(), posi_velo_traj_numpy[1,:].tolist(), posi_velo_traj_numpy[2,:].tolist(), 'C0')
         for i in range(0, len(SparseInput.waypoints)):
-            self.ax_3d.scatter(SparseInput.waypoints[i][0], SparseInput.waypoints[i][1], SparseInput.waypoints[i][2], c='C0')
+            self.ax_3d.scatter(SparseInput.waypoints[i][0], SparseInput.waypoints[i][1], SparseInput.waypoints[i][2], color="blue")
 
         # plot start and goal
-        self.ax_3d.scatter(QuadInitialCondition.position[0], QuadInitialCondition.position[1], QuadInitialCondition.position[2], label='start', color='green')
-        self.ax_3d.scatter(QuadDesiredStates.position[0], QuadDesiredStates.position[1], QuadDesiredStates.position[2], label='goal', color='violet')
+        self.ax_3d.scatter(QuadInitialCondition.position[0], QuadInitialCondition.position[1], QuadInitialCondition.position[2], color='green')
+        self.ax_3d.scatter(QuadDesiredStates.position[0], QuadDesiredStates.position[1], QuadDesiredStates.position[2], color='violet')
 
         # plot obstacles
         self.plot_linear_cube()
-        # set obstacle legend
-        red_patch = patches.Patch(color='red', label='Obstacles')
-        self.ax_3d.add_artist(plt.legend(handles=[red_patch]))
+
+        # set legends
+        colors = ["green", "violet", "blue"]
+        marker_list = ["o", "o", "o"]
+        labels = ["start", "goal", "waypoints"]
+        def f(marker_type, color_type): return plt.plot([], [], marker=marker_type, color=color_type, ls="none")[0]
+        handles = [f(marker_list[i], colors[i]) for i in range(len(labels))]
+
+        # add legend about path
+        handles.append(plt.plot([], [], c="C0", linewidth=2)[0])
+        handles.append(patches.Patch(color="red", alpha=0.75))
+        labels.extend(["Trajectory", "Obstacles"])
+        self.ax_3d.legend(handles, labels, bbox_to_anchor=(1, 1), loc='upper left', framealpha=1)
 
         self.set_axes_equal_all()
         self.ax_3d.set_xlabel("x")
         self.ax_3d.set_ylabel("y")
         self.ax_3d.set_zlabel("z")
-        plt.legend(loc="upper left")
         plt.title('Trajectory in 3D space.', fontweight ='bold')
-        plt.show()
+        plt.show(block=False)
+
+    def plot_opt_trajectory_2d(self, posi_velo_traj_numpy, QuadInitialCondition: QuadStates, QuadDesiredStates: QuadStates, SparseInput: DemoSparse):
+        """
+        Plot trajectory and waypoints in 2D space (XOY Plane) with obstacles.
+
+        posi_velo_traj_numpy is a 2D numpy array, num_states by time_steps. Each column is all states at time t.
+        """
+        # plot the same things in XOY Plane
+        self.fig_2d = plt.figure()
+        self.ax_2d = self.fig_2d.add_subplot(111)
+
+        # plot waypoints
+        self.ax_2d.plot(posi_velo_traj_numpy[0,:].tolist(), posi_velo_traj_numpy[1,:].tolist(), 'C0')
+        for i in range(0, len(SparseInput.waypoints)):
+            self.ax_2d.scatter(SparseInput.waypoints[i][0], SparseInput.waypoints[i][1], color="blue")
+
+        # plot start and goal
+        self.ax_2d.scatter(QuadInitialCondition.position[0], QuadInitialCondition.position[1], color="green")
+        self.ax_2d.scatter(QuadDesiredStates.position[0], QuadDesiredStates.position[1], color="violet")
+
+        # plot obstacles
+        self.plot_linear_cube_2d()
+
+        # set legends
+        colors = ["green", "violet", "blue"]
+        marker_list = ["o", "o", "o"]
+        labels = ["start", "goal", "waypoints"]
+        def f(marker_type, color_type): return plt.plot([], [], marker=marker_type, color=color_type, ls="none")[0]
+        handles = [f(marker_list[i], colors[i]) for i in range(len(labels))]
+
+        # add legend about path
+        handles.append(plt.plot([], [], c="C0", linewidth=2)[0])
+        handles.append(patches.Patch(color="red", alpha=0.75))
+        labels.extend(["Trajectory", "Obstacles"])
+        self.ax_2d.legend(handles, labels, loc="upper left", framealpha=1)
+
+        self.ax_2d.set_xlabel("x")
+        self.ax_2d.set_ylabel("y")
+        plt.title('Trajectory projection onto XOY Plane.', fontweight ='bold')
+        self.ax_2d.set_aspect('equal')
+        plt.show(block=False)
 
     def plot_linear_cube(self, color='red'):
         """
         Plot obstacles in 3D space.
         """
-
         # plot obstacles
         num_obs = len(self.ObsList)
-        if num_obs > 0.5:
+        if num_obs > 0:
             for i in range(0, num_obs):
                 x = self.ObsList[i].center[0] - 0.5 * self.ObsList[i].length
                 y = self.ObsList[i].center[1] - 0.5 * self.ObsList[i].width
@@ -410,13 +461,37 @@ class QuadAlgorithm(object):
 
                 xx = [x, x, x+dx, x+dx, x]
                 yy = [y, y+dy, y+dy, y, y]
-                kwargs = {'alpha': 1, 'color': color}
+                kwargs = {'alpha': 0.75, 'color': color}
                 self.ax_3d.plot3D(xx, yy, [z]*5, **kwargs)
                 self.ax_3d.plot3D(xx, yy, [z+dz]*5, **kwargs)
                 self.ax_3d.plot3D([x, x], [y, y], [z, z+dz], **kwargs)
                 self.ax_3d.plot3D([x, x], [y+dy, y+dy], [z, z+dz], **kwargs)
                 self.ax_3d.plot3D([x+dx, x+dx], [y+dy, y+dy], [z, z+dz], **kwargs)
                 self.ax_3d.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
+
+    def plot_linear_cube_2d(self, color='red'):
+        """
+        Plot obstacles in 2D space (XOY Plane).
+        """
+        # plot obstacles
+        num_obs = len(self.ObsList)
+        if num_obs > 0:
+            for i in range(num_obs):
+                x = self.ObsList[i].center[0] - 0.5 * self.ObsList[i].length
+                y = self.ObsList[i].center[1] - 0.5 * self.ObsList[i].width
+
+                dx = self.ObsList[i].length
+                dy = self.ObsList[i].width
+
+                xx = [x, x, x+dx, x+dx, x]
+                yy = [y, y+dy, y+dy, y, y]
+                kwargs = {'alpha': 0.75, 'color': color}
+                self.ax_2d.plot(xx, yy, **kwargs)
+                self.ax_2d.plot(xx, yy, **kwargs)
+                self.ax_2d.plot([x, x], [y, y], **kwargs)
+                self.ax_2d.plot([x, x], [y+dy, y+dy], **kwargs)
+                self.ax_2d.plot([x+dx, x+dx], [y+dy, y+dy], **kwargs)
+                self.ax_2d.plot([x+dx, x+dx], [y, y], **kwargs)
 
     def set_axes_equal_all(self):
         '''

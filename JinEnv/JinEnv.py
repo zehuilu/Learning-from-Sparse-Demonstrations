@@ -943,12 +943,10 @@ class Quadrotor:
                          self.w_zsq * self.feature_zsq + self.w_z * self.feature_z + \
                          w_thrust * self.cost_thrust
 
-        # tune weights for final cost
-        self.final_cost = 1 * self.cost_goal_r + \
-                          11 * self.cost_goal_v + \
-                          100 * self.cost_goal_q + \
-                          10 * self.cost_goal_w
-
+        self.final_cost = 1.0 * (5.0 * self.cost_goal_r + \
+                          1 * self.cost_goal_v + \
+                          1 * self.cost_goal_q + \
+                          1 * self.cost_goal_w)
 
         self.cost_auxvar = vcat(parameter)
 
@@ -992,8 +990,10 @@ class Quadrotor:
         return position
 
     def play_animation(self, wing_len, state_traj, waypoints_animation: list, ObsList: list, space_limits: list,
-                       file_name_prefix: str, save_option: bool, state_traj_ref=None, dt=0.1, title='UAV Maneuvering', horizon=1):
-
+                       file_name_prefix: str, save_option: bool, state_traj_ref=None, dt=0.1, horizon=1):
+        """
+        Play animation in 3D space.
+        """
         # plot
         # params = {'axes.labelsize': 25,
         #           'axes.titlesize': 25,
@@ -1004,11 +1004,11 @@ class Quadrotor:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.set_xlabel('X (m)', fontsize=15, labelpad=15)
-        ax.set_ylabel('Y (m)', fontsize=15, labelpad=15)
-        ax.set_zlabel('Z (m)', fontsize=15, labelpad=15)
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        ax.set_zlabel('Z (m)')
         self.set_axes_equal_all(ax, space_limits)
-        ax.set_title('UAV manuvering', pad=15, fontsize=20)
+        ax.set_title('Animation')
         time_template = 'wrapped time = %.1fs'
         time_text = ax.text2D(0.20, 0.80, "time", transform=ax.transAxes, fontsize=15)
 
@@ -1083,14 +1083,16 @@ class Quadrotor:
         # bar1_back = ax.bar3d([2.5], [6.5], [6.0], dx=[0.5], dy=[0.5], dz=[-4.5], color='#D95319')
 
         # data
-        position = self.get_quadrotor_position(wing_len, state_traj)
+        # position = self.get_quadrotor_position(wing_len, state_traj)
+        position = self.get_quadrotor_position(0.1, state_traj)
         sim_horizon = np.size(position, 0)
         time_interval = float(horizon / sim_horizon)
 
         if state_traj_ref is None:
             position_ref = self.get_quadrotor_position(0, numpy.zeros_like(position))
         else:
-            position_ref = self.get_quadrotor_position(wing_len, state_traj_ref)
+            # position_ref = self.get_quadrotor_position(wing_len, state_traj_ref)
+            position_ref = self.get_quadrotor_position(-.1, state_traj_ref)
 
         # animation
         line_traj, = ax.plot(position[:1, 0], position[:1, 1], position[:1, 2])
@@ -1129,14 +1131,11 @@ class Quadrotor:
                        bbox_to_anchor=(0.35, 0.25, 0.5, 0.5))
 
         def update_traj(num):
-
             # customize
             time_text.set_text(time_template % (num * time_interval))
-
             # trajectory
             line_traj.set_data(position[:num, 0], position[:num, 1])
             line_traj.set_3d_properties(position[:num, 2])
-
             # uav
             c_x, c_y, c_z = position[num, 0:3]
             r1_x, r1_y, r1_z = position[num, 3:6]
@@ -1160,7 +1159,6 @@ class Quadrotor:
             num = sim_horizon - 1
             line_traj_ref.set_data(position_ref[:num, 0], position_ref[:num, 1])
             line_traj_ref.set_3d_properties(position_ref[:num, 2])
-
             # uav ref
             c_x_ref, c_y_ref, c_z_ref = position_ref[num, 0:3]
             r1_x_ref, r1_y_ref, r1_z_ref = position_ref[num, 3:6]
@@ -1188,7 +1186,92 @@ class Quadrotor:
         if save_option == True:
             Writer = animation.writers['ffmpeg']
             writer = Writer(fps=10, metadata=dict(artist='Me'), bitrate=-1)
-            ani.save(file_name_prefix + '.gif', writer=writer, dpi=300)
+            ani.save(file_name_prefix + '_3d.gif', writer=writer, dpi=300)
+        plt.show()
+
+    def play_animation_2d(self, wing_len, state_traj, waypoints_animation: list, ObsList: list, space_limits: list,
+                       file_name_prefix: str, save_option: bool, dt=0.1, horizon=1):
+        """
+        Play animation in 2D space (XOY Plane).
+        """
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        ax.set_aspect('equal')
+        ax.set_title('Animation')
+        time_template = 'wrapped time = %.1fs'
+        time_text = ax.text(0.50, 0.80, "time", transform=ax.transAxes, fontsize=15)
+
+        # plot obstacles
+        plot_linear_cube_2d(ax, ObsList)
+
+        # set legends
+        colors = ["green", "violet", "blue"]
+        marker_list = ["o", "o", "o"]
+        labels = ["start", "goal", "waypoints"]
+        def f(marker_type, color_type): return plt.plot([], [], marker=marker_type, color=color_type, ls="none")[0]
+        handles = [f(marker_list[i], colors[i]) for i in range(len(labels))]
+
+        # add legend about path
+        handles.append(plt.plot([], [], c="C0", linewidth=2)[0])
+        handles.append(patches.Patch(color="red", alpha=0.75))
+        labels.extend(["Trajectory", "Obstacles"])
+        plt.legend(handles, labels, loc='upper left', framealpha=1)
+
+        # parse waypoints to plot, from start to goal
+        ax.scatter(waypoints_animation[0][0], waypoints_animation[0][1], color="green")
+        for i in range(1, len(waypoints_animation) - 1):
+            ax.scatter(waypoints_animation[i][0], waypoints_animation[i][1], c="C0")
+        ax.scatter(waypoints_animation[-1][0], waypoints_animation[-1][1], color="violet")
+ 
+        # data
+        # position = self.get_quadrotor_position(wing_len, state_traj)
+        position = self.get_quadrotor_position(0.1, state_traj)
+        sim_horizon = np.size(position, 0)
+        time_interval = float(horizon / sim_horizon)
+
+        # animation
+        line_traj, = ax.plot(position[:1, 0], position[:1, 1])
+        c_x, c_y, c_z = position[0, 0:3]
+        r1_x, r1_y, r1_z = position[0, 3:6]
+        r2_x, r2_y, r2_z = position[0, 6:9]
+        r3_x, r3_y, r3_z = position[0, 9:12]
+        r4_x, r4_y, r4_z = position[0, 12:15]
+        line_arm1, = ax.plot(np.array([c_x, r1_x]), np.array([c_y, r1_y]),
+            linewidth=4, color='blue', marker='o', markersize=4, markerfacecolor='black')
+        line_arm2, = ax.plot(np.array([c_x, r2_x]), np.array([c_y, r2_y]),
+            linewidth=4, color='red', marker='o', markersize=4, markerfacecolor='black')
+        line_arm3, = ax.plot(np.array([c_x, r3_x]), np.array([c_y, r3_y]),
+            linewidth=4, color='blue', marker='o', markersize=4, markerfacecolor='black')
+        line_arm4, = ax.plot(np.array([c_x, r4_x]), np.array([c_y, r4_y]),
+            linewidth=4, color='red', marker='o', markersize=4, markerfacecolor='black')
+
+        def update_traj(num):
+            # customize
+            time_text.set_text(time_template % (num * time_interval))
+            # trajectory
+            line_traj.set_data(position[:num, 0], position[:num, 1])
+            # uav
+            c_x, c_y, c_z = position[num, 0:3]
+            r1_x, r1_y, r1_z = position[num, 3:6]
+            r2_x, r2_y, r2_z = position[num, 6:9]
+            r3_x, r3_y, r3_z = position[num, 9:12]
+            r4_x, r4_y, r4_z = position[num, 12:15]
+
+            line_arm1.set_data(np.array([c_x, r1_x]), np.array([c_y, r1_y]))
+            line_arm2.set_data(np.array([c_x, r2_x]), np.array([c_y, r2_y]))
+            line_arm3.set_data(np.array([c_x, r3_x]), np.array([c_y, r3_y]))
+            line_arm4.set_data(np.array([c_x, r4_x]), np.array([c_y, r4_y]))
+
+            return line_traj, line_arm1, line_arm2, line_arm3, line_arm4, time_text
+
+        ani = animation.FuncAnimation(fig, update_traj, sim_horizon, interval=80, blit=True, cache_frame_data=False)
+
+        if save_option == True:
+            Writer = animation.writers['ffmpeg']
+            writer = Writer(fps=10, metadata=dict(artist='Me'), bitrate=-1)
+            ani.save(file_name_prefix + '_2d.gif', writer=writer, dpi=300)
         plt.show()
 
     def dir_cosine(self, q):
@@ -1768,7 +1851,6 @@ def plot_linear_cube(ax_3d, ObsList: list, color='red', alpha=0.75):
     """
     Plot obstacles in 3D space.
     """
-
     # plot obstacles
     num_obs = len(ObsList)
     if num_obs > 0:
@@ -1790,3 +1872,27 @@ def plot_linear_cube(ax_3d, ObsList: list, color='red', alpha=0.75):
             ax_3d.plot3D([x, x], [y+dy, y+dy], [z, z+dz], **kwargs)
             ax_3d.plot3D([x+dx, x+dx], [y+dy, y+dy], [z, z+dz], **kwargs)
             ax_3d.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
+
+def plot_linear_cube_2d(ax, ObsList: list, color='red', alpha=0.75):
+    """
+    Plot obstacles in 2D space (XOY Plane).
+    """
+    # plot obstacles
+    num_obs = len(ObsList)
+    if num_obs > 0:
+        for i in range(num_obs):
+            x = ObsList[i].center[0] - 0.5 * ObsList[i].length
+            y = ObsList[i].center[1] - 0.5 * ObsList[i].width
+
+            dx = ObsList[i].length
+            dy = ObsList[i].width
+
+            xx = [x, x, x+dx, x+dx, x]
+            yy = [y, y+dy, y+dy, y, y]
+            kwargs = {'alpha': 0.75, 'color': color}
+            ax.plot(xx, yy, **kwargs)
+            ax.plot(xx, yy, **kwargs)
+            ax.plot([x, x], [y, y], **kwargs)
+            ax.plot([x, x], [y+dy, y+dy], **kwargs)
+            ax.plot([x+dx, x+dx], [y+dy, y+dy], **kwargs)
+            ax.plot([x+dx, x+dx], [y, y], **kwargs)
